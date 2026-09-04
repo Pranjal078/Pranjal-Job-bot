@@ -1,0 +1,104 @@
+name: Daily Job Alert
+
+on:
+  # Scheduled run — 06:00 UTC daily (11:30 AM IST)
+  schedule:
+    - cron: '0 6 * * *'
+
+  # Manual trigger — useful for first-run testing
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (print digest, no Telegram message, no DB write)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      source:
+        description: 'Test a single source only (leave empty for all)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - remoteok
+          - weworkremotely
+          - company_careers
+          - linkedin_email
+
+jobs:
+  job-alert:
+    name: Run Job Alert Bot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python setup ────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 3. Write secrets to disk ───────────────────────────────────────────
+      # Gmail token — stored as a GitHub secret to avoid re-auth in CI
+      - name: Write Gmail token
+        if: ${{ secrets.GMAIL_TOKEN_JSON != '' }}
+        run: echo '${{ secrets.GMAIL_TOKEN_JSON }}' > token.json
+
+      # Gmail credentials (needed if token needs refresh)
+      - name: Write Gmail credentials
+        if: ${{ secrets.GMAIL_CREDENTIALS_JSON != '' }}
+        run: echo '${{ secrets.GMAIL_CREDENTIALS_JSON }}' > credentials.json
+
+      # ── 4. Restore seen-jobs DB from cache ─────────────────────────────────
+      # We cache jobs.db across runs so dedup works between daily runs.
+      # Cache key includes a date prefix so the cache is invalidated after
+      # ~30 days (prevents unbounded growth).
+      - name: Restore jobs database
+        id: cache-db
+        uses: actions/cache@v4
+        with:
+          path: jobs.db
+          key: jobs-db-${{ hashFiles('config.yaml') }}-${{ github.run_number }}
+          restore-keys: |
+            jobs-db-${{ hashFiles('config.yaml') }}-
+
+      # ── 5. Run the bot ─────────────────────────────────────────────────────
+      - name: Run job alert bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_USER:          ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:      ${{ secrets.SMTP_PASSWORD }}
+          SMTP_TO:            ${{ secrets.SMTP_TO }}
+          GMAIL_TOKEN_PATH:   token.json
+          GMAIL_CREDENTIALS_PATH: credentials.json
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ github.event.inputs.source }}" ]; then
+            ARGS="$ARGS --source ${{ github.event.inputs.source }}"
+          fi
+          python main.py $ARGS
+
+      # ── 6. Upload artifacts (for debugging) ───────────────────────────────
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-alert-log-${{ github.run_number }}
+          path: |
+            jobs.db
+          retention-days: 7

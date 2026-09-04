@@ -1,0 +1,115 @@
+# ============================================================
+#  Job Search Alert Bot — Configuration
+#  Edit this file to change your criteria. No code changes needed.
+# ============================================================
+
+# --------------- SOURCE TOGGLES ---------------
+sources:
+  remoteok: true
+  weworkremotely: true
+  wellfound: false        # Stub — API unavailable; set true when/if it returns
+  naukri: false           # Stub — no public API; set true if implemented
+  company_careers: true
+  linkedin_email: true    # Requires Gmail API creds (see README)
+
+# --------------- COMPANY CAREER PAGES ---------------
+# Add or remove companies here. Each entry needs a `name` and a `type`.
+# Supported types: hsbc, wells_fargo, amex, jpmc, mastercard, walmart
+company_targets:
+  - name: HSBC
+    type: hsbc
+    enabled: true
+  - name: Wells Fargo
+    type: wells_fargo
+    enabled: true
+  - name: American Express
+    type: amex
+    enabled: true
+  - name: JPMorgan Chase
+    type: jpmc
+    enabled: true
+  - name: Mastercard
+    type: mastercard
+    enabled: true
+  - name: Walmart Global Tech
+    type: walmart
+    enabled: true
+
+# --------------- FILTER CRITERIA ---------------
+filters:
+  # Job title must contain at least one of these keywords (case-insensitive)
+  title_keywords:
+    - Business Analyst
+    - Product Analyst
+    - Analytics Consultant
+    - FinOps Analyst
+    - Data Analyst
+
+  # Location filter — a job passes if its location string matches any of these
+  # Use broad terms; matching is case-insensitive substring
+  locations:
+    - Remote
+    - remote
+    - India
+    - Gurgaon
+    - Gurugram
+    - NCR
+    - New Delhi
+    - Delhi
+    - Germany
+    - Berlin
+    - Munich
+    - Frankfurt
+    - Hamburg
+    - Europe
+
+  # Compensation floor — flag (not exclude) if listed comp >= this value (in INR LPA equivalent)
+  # Set to null to disable comp flagging
+  comp_floor_lpa: 20
+
+  # Maximum age of listings in days — older listings are discarded
+  max_age_days: 7
+
+  # Title exclusions — skip if title contains any of these (case-insensitive)
+  exclude_title_keywords:
+    - Senior Manager
+    - Director
+    - VP
+    - Vice President
+    - Head of
+    - Chief
+    - Principal Manager
+    - Managing Director
+    - C-Level
+
+# --------------- NOTIFICATION ---------------
+notification:
+  # Primary channel: "telegram" or "email"
+  channel: telegram
+
+  telegram:
+    # Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env or GitHub secrets
+    max_jobs_per_message: 10    # Telegram has a 4096-char limit per message
+    parse_mode: HTML            # HTML or Markdown
+
+  email:
+    # Used as fallback if Telegram token is absent
+    # Set SMTP_USER and SMTP_PASSWORD in .env or GitHub secrets
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    from_addr: ""               # e.g. yourname@gmail.com
+    to_addr: ""                 # where to send the digest
+
+# --------------- SCHEDULING ---------------
+schedule:
+  # GitHub Actions cron expression (UTC)
+  # 0 6 * * * = 06:00 UTC = 11:30 AM IST
+  cron: "0 6 * * *"
+
+# --------------- DATABASE ---------------
+database:
+  path: jobs.db   # SQLite file path (relative to project root)
+
+# --------------- LOGGING ---------------
+logging:
+  level: INFO     # DEBUG, INFO, WARNING, ERROR
