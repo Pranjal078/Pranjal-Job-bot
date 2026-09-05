@@ -15,11 +15,19 @@ sources:
 
 # --------------- COMPANY CAREER PAGES ---------------
 # Add or remove companies here. Each entry needs a `name` and a `type`.
-# Supported types: hsbc, wells_fargo, amex, jpmc, mastercard, walmart
+# Supported types:
+#   Workday: wells_fargo, mastercard, walmart, citi, barclays, deutsche_bank, paypal, fractal, genpact, target
+#   Oracle HCM: amex, jpmc
+#   SmartRecruiters: visa, freshworks, wns, swiggy, phonepe
+#   Greenhouse: razorpay
+#   Workable: tiger
+#
+# Skipped (no public unauthenticated search API):
+#   HSBC (Eightfold/SuccessFactors), Standard Chartered (Taleo), Goldman Sachs (SSO),
+#   LatentView (WordPress forms), ZS Associates (Jibe), Mu Sigma (email),
+#   EXL Service (DNS/no unauth API), Flipkart/Myntra/Meesho/CRED (closed apps), Zomato (referral only)
 company_targets:
-  - name: HSBC
-    type: hsbc
-    enabled: true
+  # Priority 1: Banks / Global Financial Services
   - name: Wells Fargo
     type: wells_fargo
     enabled: true
@@ -32,9 +40,58 @@ company_targets:
   - name: Mastercard
     type: mastercard
     enabled: true
+  - name: Citi
+    type: citi
+    enabled: true
+  - name: Barclays
+    type: barclays
+    enabled: true
+  - name: Deutsche Bank
+    type: deutsche_bank
+    enabled: true
+  - name: Visa
+    type: visa
+    enabled: true
+  - name: PayPal
+    type: paypal
+    enabled: true
+
+  # Global Tech & Retail
   - name: Walmart Global Tech
     type: walmart
     enabled: true
+  - name: Target
+    type: target
+    enabled: true
+
+  # Analytics & IT Consulting
+  - name: Fractal Analytics
+    type: fractal
+    enabled: true
+  - name: Tiger Analytics
+    type: tiger
+    enabled: true
+  - name: Genpact
+    type: genpact
+    enabled: true
+  - name: WNS
+    type: wns
+    enabled: true
+  - name: Freshworks
+    type: freshworks
+    enabled: true
+
+  # Indian Tech Unicorns & FinTech
+  - name: PhonePe
+    type: phonepe
+    enabled: true
+  - name: Razorpay
+    type: razorpay
+    enabled: true
+  - name: Swiggy
+    type: swiggy
+    enabled: true
+
 
 # --------------- FILTER CRITERIA ---------------
 filters:

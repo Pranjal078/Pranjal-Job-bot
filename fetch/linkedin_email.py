@@ -11,17 +11,45 @@ We parse those emails to extract: title, company, location, URL.
 Setup: Run `python setup_gmail.py` once to authenticate and save token.json.
 """
 
+import asyncio
 import logging
 import os
 import re
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email import message_from_bytes
 from email.utils import parsedate_to_datetime
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+
+def _send_token_expiry_telegram_alert(message: str) -> None:
+    """Send a Telegram alert about Gmail OAuth token issues via Telegram Bot API.
+
+    Uses requests.post directly to ensure immediate, reliable delivery without
+    async event loop overhead.
+    """
+    import requests as req
+    try:
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        if not token or not chat_id:
+            logger.warning("Cannot send token expiry alert — TELEGRAM_BOT_TOKEN/CHAT_ID not set.")
+            return
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML",
+        }
+        resp = req.post(url, json=payload, timeout=10)
+        resp.raise_for_status()
+        logger.info("Token expiry Telegram alert sent successfully.")
+    except Exception as e:
+        logger.error("Failed to send token expiry Telegram alert: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -55,11 +83,25 @@ def _fetch_via_gmail_api(max_emails: int = 20) -> list[dict]:
             scopes=["https://www.googleapis.com/auth/gmail.readonly"],
         )
 
-        # Inspect token validity & testing-mode 7-day expiry warning
-        if creds.expiry:
-            expiry_str = creds.expiry.strftime("%Y-%m-%d %H:%M:%S UTC")
-            logger.info("Gmail OAuth Token valid until: %s", expiry_str)
-        
+        # In Google Cloud 'Testing' mode, refresh tokens expire 7 days after creation.
+        # Check token file age to proactively warn at day 5 or 6 before failure occurs.
+        try:
+            token_mtime = datetime.fromtimestamp(os.path.getmtime(token_path), tz=timezone.utc)
+            token_age = datetime.now(timezone.utc) - token_mtime
+            if timedelta(days=5) <= token_age < timedelta(days=7):
+                days_left = max(0, 7 - token_age.days)
+                warn_msg = (
+                    "⚠️ <b>Gmail OAuth Token Expiring Soon</b>\n\n"
+                    f"Your Gmail OAuth credentials were authenticated <b>{token_age.days} days ago</b>.\n"
+                    f"In Google Cloud 'Testing' mode, refresh tokens expire after 7 days (~<b>{days_left} day(s) left</b>).\n\n"
+                    "👉 Re-run <code>python setup_gmail.py</code> on your machine and "
+                    "update the <code>GMAIL_TOKEN_JSON</code> GitHub secret."
+                )
+                logger.warning("Gmail OAuth token is %d days old — sending Telegram alert.", token_age.days)
+                _send_token_expiry_telegram_alert(warn_msg)
+        except Exception as age_err:
+            logger.debug("Could not verify token file age: %s", age_err)
+
         if creds.expired and creds.refresh_token:
             logger.info("Gmail OAuth access token expired. Refreshing token...")
             try:
@@ -68,12 +110,21 @@ def _fetch_via_gmail_api(max_emails: int = 20) -> list[dict]:
                     f.write(creds.to_json())
                 logger.info("Gmail OAuth token successfully refreshed.")
             except Exception as refresh_err:
+                alert_msg = (
+                    "🚨 <b>CRITICAL: Gmail OAuth Token Expired</b>\n\n"
+                    f"Token refresh failed: <code>{refresh_err}</code>\n\n"
+                    "Google Cloud 'Testing' mode refresh tokens expire after 7 days.\n"
+                    "LinkedIn email parsing is <b>disabled</b> until you re-authenticate.\n\n"
+                    "👉 Run <code>python setup_gmail.py</code> on your machine and "
+                    "update the <code>GMAIL_TOKEN_JSON</code> GitHub secret."
+                )
                 logger.error(
                     "❌ CRITICAL: Gmail OAuth token refresh failed (%s). "
                     "Google Cloud 'Testing' mode refresh tokens expire after 7 days. "
                     "Please re-run `venv/bin/python setup_gmail.py` to re-authenticate.",
                     refresh_err
                 )
+                _send_token_expiry_telegram_alert(alert_msg)
                 raise RuntimeError("Gmail OAuth refresh token expired (Testing mode 7-day limit).")
 
         service = build("gmail", "v1", credentials=creds)
