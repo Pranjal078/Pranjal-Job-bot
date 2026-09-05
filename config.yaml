@@ -45,6 +45,8 @@ filters:
     - Analytics Consultant
     - FinOps Analyst
     - Data Analyst
+    - Analyst
+    - Consultant
 
   # Location filter — a job passes if its location string matches any of these
   # Use broad terms; matching is case-insensitive substring
