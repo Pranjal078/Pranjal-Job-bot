@@ -85,14 +85,23 @@ filters:
   visa_keywords:
     - visa sponsorship
     - sponsorship available
+    - visa provided
+    - sponsorship provided
+    - work permit
+    - work visa
+    - relocation
     - relocation provided
     - relocation assistance
     - relocation package
     - indians preferred
     - indians eligible
     - eu blue card
-    - blue card eligible
-    - work permit provided
+    - blue card
+    - h1b
+    - visa
+
+  # Minimum experience requirement in years (filter out entry-level / intern / 0-1 yr roles)
+  min_experience_years: 2
 
   # Compensation floor — flag (not exclude) if listed comp >= this value (in INR LPA equivalent)
   # Set to null to disable comp flagging
@@ -112,6 +121,14 @@ filters:
     - Principal Manager
     - Managing Director
     - C-Level
+    - Intern
+    - Internship
+    - Graduate Program
+    - Training Program
+    - Early Career
+    - Student
+    - Trainee
+    - Fresher
 
 # --------------- NOTIFICATION ---------------
 notification:

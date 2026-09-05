@@ -100,16 +100,45 @@ def _parse_comp_inr_lpa(comp_str: str | None) -> float | None:
     return None
 
 
-def tag_visa_sponsorship(job: dict, visa_keywords: list[str]) -> tuple[bool, str | None]:
+def _check_experience(title: str, text: str, min_years: int = 2) -> bool:
     """
-    Check if title, location, or description mentions visa sponsorship or relocation.
+    Check if role satisfies experience requirement (default 2+ years).
+    Excludes explicit 0-1 yr / intern / graduate trainee roles.
+    """
+    import re
+    combined = f"{title} {text}".lower()
+
+    # Reject 0-1 year or intern/fresher explicit statements
+    reject_patterns = [
+        r"\b0\s*-\s*1\s*(?:year|yr)",
+        r"\b0\s*to\s*1\s*(?:year|yr)",
+        r"\bno\s+experience\b",
+        r"\bentry\s+level\b",
+        r"\b0\s*(?:year|yr)s?\s+exp",
+        r"\bintern\b",
+        r"\binternship\b",
+        r"\bfresher\b",
+        r"\bstudent\b",
+        r"\bgraduate\s+program\b",
+        r"\btraining\s+program\b",
+    ]
+    for pat in reject_patterns:
+        if re.search(pat, combined):
+            return False
+
+    return True
+
+
+def tag_visa_sponsorship(job: dict, visa_keywords: list[str], body_text: str = "") -> tuple[bool, str | None]:
+    """
+    Check if title, location, description, or page body text mentions visa sponsorship or relocation.
     Returns (is_flagged, matched_term).
     """
     if not visa_keywords:
         return False, None
 
     combined_text = (
-        f"{job.get('title', '')} {job.get('location', '')} {job.get('description', '')}"
+        f"{job.get('title', '')} {job.get('location', '')} {job.get('description', '')} {body_text}"
     ).lower()
 
     for kw in visa_keywords:
@@ -119,11 +148,10 @@ def tag_visa_sponsorship(job: dict, visa_keywords: list[str]) -> tuple[bool, str
     return False, None
 
 
-def is_url_live(url: str, timeout: int = 5) -> bool:
+def check_url_live_and_body(url: str, timeout: int = 5) -> tuple[bool, str]:
     """
     Perform a lightweight HEAD/GET request to verify if listing is still active.
-    Returns False if HTTP 404/410, or page body contains 'no longer accepting applications', 'position filled', etc.
-    Fails open (returns True) on transient network timeouts to avoid dropping valid jobs.
+    Returns (is_live, body_sample_text).
     """
     import requests
     headers = {
@@ -140,23 +168,29 @@ def is_url_live(url: str, timeout: int = 5) -> bool:
     try:
         resp = requests.head(url, headers=headers, allow_redirects=True, timeout=timeout)
         if resp.status_code in (404, 410):
-            return False
+            return False, ""
 
-        # If HEAD succeeds or is unsupported, do GET to check status and body text
+        body_sample = ""
         if resp.status_code not in (404, 410):
             resp = requests.get(url, headers=headers, allow_redirects=True, timeout=timeout)
             if resp.status_code in (404, 410):
-                return False
+                return False, ""
 
         if resp.status_code == 200 and "html" in resp.headers.get("content-type", "").lower():
-            body_sample = resp.text[:20000].lower()
+            body_sample = resp.text[:30000].lower()
             if any(indicator in body_sample for indicator in closed_indicators):
-                return False
+                return False, ""
 
-        return True
+        return True, body_sample
     except Exception as e:
         logger.debug("Live URL check for %s: %s (failing open)", url, e)
-        return True
+        return True, ""
+
+
+def is_url_live(url: str, timeout: int = 5) -> bool:
+    """Convenience wrapper for backward compatibility in tests."""
+    is_live, _ = check_url_live_and_body(url, timeout=timeout)
+    return is_live
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +218,7 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
     target_locations = filters.get("locations", [])
     visa_keywords = filters.get("visa_keywords", [])
     max_age_days = filters.get("max_age_days", 7)
+    min_exp_years = filters.get("min_experience_years", 2)
     comp_floor_lpa = filters.get("comp_floor_lpa")
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
@@ -196,6 +231,7 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
         "keyword_miss": 0,
         "excluded_title": 0,
         "location_miss": 0,
+        "experience_miss": 0,
         "too_old": 0,
         "duplicate": 0,
         "expired_url": 0,
@@ -224,31 +260,40 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
             stats["excluded_title"] += 1
             continue
 
-        # 3. Location filter (if configured)
+        # 3. Experience filter (2+ years)
+        desc = job.get("description", "")
+        if not _check_experience(title, desc, min_years=min_exp_years):
+            stats["experience_miss"] += 1
+            continue
+
+        # 4. Location filter (if configured)
         location = (job.get("location") or "").strip()
         if target_locations and not _matches_location(location, target_locations):
             stats["location_miss"] += 1
             continue
 
-        # 4. Age filter
+        # 5. Age filter
         posted_str = job.get("posted_date", "")
         posted_dt = _parse_posted_date(posted_str)
         if posted_dt and posted_dt < cutoff:
             stats["too_old"] += 1
             continue
 
-        # 5. Dedup check
+        # 6. Dedup check
         h = url_hash(url)
         if h in seen_hashes:
             stats["duplicate"] += 1
             continue
 
-        # 6. Freshness / Live URL Availability Check (Optional / Final step)
-        if check_live_urls and not is_url_live(url):
-            stats["expired_url"] += 1
-            continue
+        # 7. Freshness / Live URL Availability Check & Body Text Fetch
+        body_text = ""
+        if check_live_urls:
+            is_live, body_text = check_url_live_and_body(url)
+            if not is_live:
+                stats["expired_url"] += 1
+                continue
 
-        # 7. Annotations (comp flagging & visa sponsorship tagging)
+        # 8. Annotations (comp flagging & visa sponsorship tagging)
         comp_str = job.get("comp_if_available")
         comp_lpa = _parse_comp_inr_lpa(comp_str)
         job = dict(job)  # shallow copy to avoid mutating original
@@ -256,8 +301,8 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
         job["comp_flagged"] = bool(
             comp_floor_lpa and comp_lpa is not None and comp_lpa >= comp_floor_lpa
         )
-        
-        is_visa, visa_term = tag_visa_sponsorship(job, visa_keywords)
+
+        is_visa, visa_term = tag_visa_sponsorship(job, visa_keywords, body_text=body_text)
         job["visa_flagged"] = is_visa
         if is_visa:
             job["visa_matched_term"] = visa_term
@@ -267,9 +312,9 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
 
     logger.info(
         "Filter results: %d total → %d passed | "
-        "keyword_miss=%d, excluded=%d, location_miss=%d, too_old=%d, duplicate=%d, expired_url=%d, no_title=%d, no_url=%d",
+        "keyword_miss=%d, excluded=%d, location_miss=%d, exp_miss=%d, too_old=%d, duplicate=%d, expired_url=%d, no_title=%d, no_url=%d",
         stats["total"], stats["passed"],
-        stats["keyword_miss"], stats["excluded_title"], stats["location_miss"],
+        stats["keyword_miss"], stats["excluded_title"], stats["location_miss"], stats["experience_miss"],
         stats["too_old"], stats["duplicate"], stats["expired_url"], stats["no_title"], stats["no_url"],
     )
     return passed
