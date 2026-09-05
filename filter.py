@@ -142,7 +142,8 @@ def is_url_live(url: str, timeout: int = 5) -> bool:
         if resp.status_code in (404, 410):
             return False
 
-        if resp.status_code in (405, 400) or resp.status_code >= 400:
+        # If HEAD succeeds or is unsupported, do GET to check status and body text
+        if resp.status_code not in (404, 410):
             resp = requests.get(url, headers=headers, allow_redirects=True, timeout=timeout)
             if resp.status_code in (404, 410):
                 return False
