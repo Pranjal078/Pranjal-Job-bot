@@ -68,13 +68,19 @@ class TestLiveUrlAvailabilityCheck:
         url = "https://example.com/job/closed-456"
         assert is_url_live(url) is False
 
+    @patch("requests.get")
     @patch("requests.head")
-    def test_live_url_check_active(self, mock_head):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"content-type": "text/html"}
-        mock_resp.text = "<html><body>Active job listing details...</body></html>"
-        mock_head.return_value = mock_resp
+    def test_live_url_check_active(self, mock_head, mock_get):
+        mock_head_resp = MagicMock()
+        mock_head_resp.status_code = 200
+        mock_head_resp.headers = {"content-type": "text/html"}
+        mock_head.return_value = mock_head_resp
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.headers = {"content-type": "text/html"}
+        mock_get_resp.text = "<html><body>Active job listing details...</body></html>"
+        mock_get.return_value = mock_get_resp
 
         url = "https://example.com/job/active-789"
         assert is_url_live(url) is True
