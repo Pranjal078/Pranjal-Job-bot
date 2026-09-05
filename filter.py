@@ -100,16 +100,16 @@ def _parse_comp_inr_lpa(comp_str: str | None) -> float | None:
     return None
 
 
-def _check_experience(title: str, text: str, min_years: int = 2) -> bool:
+def _check_experience(title: str, text: str, target_years: int = 3) -> bool:
     """
-    Check if role satisfies experience requirement (default 2+ years).
-    Excludes explicit 0-1 yr / intern / graduate trainee roles.
+    Check if role satisfies target experience requirement (~3 years experience).
+    Excludes 0-1 yr / intern / graduate trainee roles AND 8+ yr executive roles.
     """
     import re
     combined = f"{title} {text}".lower()
 
-    # Reject 0-1 year or intern/fresher explicit statements
-    reject_patterns = [
+    # Reject 0-1 year, entry-level, intern, or fresher explicit statements
+    reject_entry = [
         r"\b0\s*-\s*1\s*(?:year|yr)",
         r"\b0\s*to\s*1\s*(?:year|yr)",
         r"\bno\s+experience\b",
@@ -122,7 +122,19 @@ def _check_experience(title: str, text: str, min_years: int = 2) -> bool:
         r"\bgraduate\s+program\b",
         r"\btraining\s+program\b",
     ]
-    for pat in reject_patterns:
+    for pat in reject_entry:
+        if re.search(pat, combined):
+            return False
+
+    # Reject 8+ years, 10+ years, 12+ years executive requirements (overly senior for 3 yrs exp)
+    reject_senior = [
+        r"\b(?:8|9|10|12|15)\s*\+\s*(?:year|yr)",
+        r"\b(?:8|9|10|12|15)\s*to\s*\d+\s*(?:year|yr)",
+        r"\b(?:8|9|10|12|15)\s*-\s*\d+\s*(?:year|yr)",
+        r"\bminimum\s+(?:8|9|10|12|15)\s+years\b",
+        r"\bat\s+least\s+(?:8|9|10|12|15)\s+years\b",
+    ]
+    for pat in reject_senior:
         if re.search(pat, combined):
             return False
 
@@ -218,7 +230,7 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
     target_locations = filters.get("locations", [])
     visa_keywords = filters.get("visa_keywords", [])
     max_age_days = filters.get("max_age_days", 7)
-    min_exp_years = filters.get("min_experience_years", 2)
+    target_exp_years = filters.get("target_experience_years", 3)
     comp_floor_lpa = filters.get("comp_floor_lpa")
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
@@ -260,9 +272,9 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_l
             stats["excluded_title"] += 1
             continue
 
-        # 3. Experience filter (2+ years)
+        # 3. Experience filter (~3 years experience)
         desc = job.get("description", "")
-        if not _check_experience(title, desc, min_years=min_exp_years):
+        if not _check_experience(title, desc, target_years=target_exp_years):
             stats["experience_miss"] += 1
             continue
 
