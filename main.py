@@ -99,7 +99,7 @@ def run_fetchers(config: dict, only_source: str | None = None) -> list[dict]:
 # Main pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run(config: dict, dry_run: bool = False, only_source: str | None = None):
+def run(config: dict, dry_run: bool = False, only_source: str | None = None, limit: int | None = None):
     """Execute the full fetch → filter → store → notify pipeline."""
     logger = logging.getLogger("main")
     from filter import apply_filters
@@ -121,14 +121,20 @@ def run(config: dict, dry_run: bool = False, only_source: str | None = None):
         new_jobs = apply_filters(raw_jobs, config, seen_hashes)
         logger.info("New jobs after filtering: %d", len(new_jobs))
 
+        if limit and len(new_jobs) > limit:
+            logger.info("Limiting notifications to top %d jobs (out of %d)", limit, len(new_jobs))
+            jobs_to_notify = new_jobs[:limit]
+        else:
+            jobs_to_notify = new_jobs
+
         # ── 3. Notify ───────────────────────────────────────────────────────
         logger.info("=== STEP 3: Sending digest ===")
-        notified = notify(new_jobs, config, dry_run=dry_run)
+        notified = notify(jobs_to_notify, config, dry_run=dry_run)
 
         # ── 4. Store ─────────────────────────────────────────────────────────
-        if not dry_run and new_jobs:
-            logger.info("=== STEP 4: Marking %d jobs as seen ===", len(new_jobs))
-            store.mark_seen(new_jobs)
+        if not dry_run and jobs_to_notify:
+            logger.info("=== STEP 4: Marking %d jobs as seen ===", len(jobs_to_notify))
+            store.mark_seen(jobs_to_notify)
         elif dry_run:
             logger.info("=== STEP 4: DRY RUN — skipping DB write ===")
 
@@ -136,12 +142,12 @@ def run(config: dict, dry_run: bool = False, only_source: str | None = None):
         if not dry_run:
             store.log_run(
                 jobs_found=len(raw_jobs),
-                jobs_new=len(new_jobs),
+                jobs_new=len(jobs_to_notify),
                 notified=notified,
                 status="ok",
             )
 
-    return len(new_jobs)
+    return len(jobs_to_notify)
 
 
 def show_stats(config: dict):
@@ -200,6 +206,10 @@ Examples:
         help="Run only this source (for testing)"
     )
     parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Limit number of new jobs to notify about (e.g. --limit 10 for exactly 1 message)"
+    )
+    parser.add_argument(
         "--stats", action="store_true", help="Show store statistics and recent run history"
     )
     args = parser.parse_args()
@@ -220,10 +230,10 @@ Examples:
         show_stats(config)
         return
 
-    logger.info("Starting Job Search Alert Bot (dry_run=%s, source=%s)", args.dry_run, args.source)
+    logger.info("Starting Job Search Alert Bot (dry_run=%s, source=%s, limit=%s)", args.dry_run, args.source, args.limit)
 
     try:
-        new_count = run(config, dry_run=args.dry_run, only_source=args.source)
+        new_count = run(config, dry_run=args.dry_run, only_source=args.source, limit=args.limit)
         logger.info("Done. %d new job(s) in this run.", new_count)
         sys.exit(0)
     except KeyboardInterrupt:

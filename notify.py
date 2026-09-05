@@ -145,31 +145,25 @@ def _build_messages(jobs: list[dict], max_per_msg: int = 10) -> list[str]:
 # Telegram sender
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _send_telegram_async(token: str, chat_id: str, messages: list[str]) -> bool:
-    """Send paginated messages via Telegram Bot API."""
-    try:
-        from telegram import Bot
-        from telegram.constants import ParseMode
-    except ImportError:
-        logger.error("python-telegram-bot not installed. Run: pip install -r requirements.txt")
-        return False
-
-    bot = Bot(token=token)
+def _send_telegram(token: str, chat_id: str, messages: list[str]) -> bool:
+    """Send paginated messages via Telegram Bot HTTP API."""
+    import requests
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     success = True
-    try:
-        async with bot:
-            for i, msg in enumerate(messages):
-                logger.debug("Sending Telegram message %d/%d...", i + 1, len(messages))
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=msg,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True,
-                )
-    except Exception as e:
-        logger.error("Telegram send failed: %s", e)
-        success = False
-
+    for i, msg in enumerate(messages):
+        logger.debug("Sending Telegram message %d/%d...", i + 1, len(messages))
+        try:
+            payload = {
+                "chat_id": chat_id,
+                "text": msg,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            }
+            resp = requests.post(url, json=payload, timeout=15)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error("Telegram send failed: %s", e)
+            success = False
     return success
 
 
@@ -200,7 +194,7 @@ def send_telegram(jobs: list[dict], config: dict) -> bool:
         return True
 
     logger.info("Sending %d Telegram message(s) for %d jobs...", len(messages), len(jobs))
-    return asyncio.run(_send_telegram_async(token, chat_id, messages))
+    return _send_telegram(token, chat_id, messages)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
