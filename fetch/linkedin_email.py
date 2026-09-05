@@ -54,11 +54,27 @@ def _fetch_via_gmail_api(max_emails: int = 20) -> list[dict]:
             token_path,
             scopes=["https://www.googleapis.com/auth/gmail.readonly"],
         )
+
+        # Inspect token validity & testing-mode 7-day expiry warning
+        if creds.expiry:
+            expiry_str = creds.expiry.strftime("%Y-%m-%d %H:%M:%S UTC")
+            logger.info("Gmail OAuth Token valid until: %s", expiry_str)
+        
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            # Save refreshed token
-            with open(token_path, "w") as f:
-                f.write(creds.to_json())
+            logger.info("Gmail OAuth access token expired. Refreshing token...")
+            try:
+                creds.refresh(Request())
+                with open(token_path, "w") as f:
+                    f.write(creds.to_json())
+                logger.info("Gmail OAuth token successfully refreshed.")
+            except Exception as refresh_err:
+                logger.error(
+                    "❌ CRITICAL: Gmail OAuth token refresh failed (%s). "
+                    "Google Cloud 'Testing' mode refresh tokens expire after 7 days. "
+                    "Please re-run `venv/bin/python setup_gmail.py` to re-authenticate.",
+                    refresh_err
+                )
+                raise RuntimeError("Gmail OAuth refresh token expired (Testing mode 7-day limit).")
 
         service = build("gmail", "v1", credentials=creds)
 

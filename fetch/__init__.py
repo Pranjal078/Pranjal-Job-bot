@@ -21,6 +21,7 @@ from .wellfound import fetch as fetch_wellfound
 from .naukri import fetch as fetch_naukri
 from .company_careers import fetch as fetch_company_careers
 from .linkedin_email import fetch as fetch_linkedin_email
+from .gulf import fetch as fetch_gulf
 
 __all__ = [
     "fetch_remoteok",
@@ -29,4 +30,5 @@ __all__ = [
     "fetch_naukri",
     "fetch_company_careers",
     "fetch_linkedin_email",
+    "fetch_gulf",
 ]

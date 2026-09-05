@@ -7,6 +7,7 @@
 sources:
   remoteok: true
   weworkremotely: true
+  gulf: true              # Middle East job boards (Bayt, GulfTalent, etc.)
   wellfound: false        # Stub — API unavailable; set true when/if it returns
   naukri: false           # Stub — no public API; set true if implemented
   company_careers: true
@@ -56,16 +57,44 @@ filters:
     - NCR
     - New Delhi
     - Delhi
+    - Mumbai
+    - Bangalore
+    - Bengaluru
     - Germany
     - Berlin
     - Munich
     - Frankfurt
     - Hamburg
     - Europe
+    - UAE
+    - Dubai
+    - Abu Dhabi
+    - Saudi Arabia
+    - Riyadh
+    - Qatar
+    - Doha
+    - Bahrain
+    - Kuwait
+    - Oman
+    - Middle East
+    - Gulf
+
+  # Visa & Relocation keywords to flag & surface prominently in digests
+  visa_keywords:
+    - visa sponsorship
+    - sponsorship available
+    - relocation provided
+    - relocation assistance
+    - relocation package
+    - indians preferred
+    - indians eligible
+    - eu blue card
+    - blue card eligible
+    - work permit provided
 
   # Compensation floor — flag (not exclude) if listed comp >= this value (in INR LPA equivalent)
   # Set to null to disable comp flagging
-  comp_floor_lpa: 20
+  comp_floor_lpa: 10
 
   # Maximum age of listings in days — older listings are discarded
   max_age_days: 7

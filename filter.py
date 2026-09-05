@@ -100,27 +100,88 @@ def _parse_comp_inr_lpa(comp_str: str | None) -> float | None:
     return None
 
 
+def tag_visa_sponsorship(job: dict, visa_keywords: list[str]) -> tuple[bool, str | None]:
+    """
+    Check if title, location, or description mentions visa sponsorship or relocation.
+    Returns (is_flagged, matched_term).
+    """
+    if not visa_keywords:
+        return False, None
+
+    combined_text = (
+        f"{job.get('title', '')} {job.get('location', '')} {job.get('description', '')}"
+    ).lower()
+
+    for kw in visa_keywords:
+        if kw.lower() in combined_text:
+            return True, kw
+
+    return False, None
+
+
+def is_url_live(url: str, timeout: int = 5) -> bool:
+    """
+    Perform a lightweight HEAD/GET request to verify if listing is still active.
+    Returns False if HTTP 404/410, or page body contains 'no longer accepting applications', 'position filled', etc.
+    Fails open (returns True) on transient network timeouts to avoid dropping valid jobs.
+    """
+    import requests
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    closed_indicators = [
+        "no longer accepting applications",
+        "position filled",
+        "job expired",
+        "job is no longer available",
+        "this position has been closed",
+        "job listing has expired",
+    ]
+    try:
+        resp = requests.head(url, headers=headers, allow_redirects=True, timeout=timeout)
+        if resp.status_code in (404, 410):
+            return False
+
+        if resp.status_code in (405, 400) or resp.status_code >= 400:
+            resp = requests.get(url, headers=headers, allow_redirects=True, timeout=timeout)
+            if resp.status_code in (404, 410):
+                return False
+
+        if resp.status_code == 200 and "html" in resp.headers.get("content-type", "").lower():
+            body_sample = resp.text[:20000].lower()
+            if any(indicator in body_sample for indicator in closed_indicators):
+                return False
+
+        return True
+    except Exception as e:
+        logger.debug("Live URL check for %s: %s (failing open)", url, e)
+        return True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main filter function
 # ─────────────────────────────────────────────────────────────────────────────
 
-def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str]) -> list[dict]:
+def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str], check_live_urls: bool = False) -> list[dict]:
     """
     Filter a list of normalized job dicts according to config.yaml rules.
 
     Args:
-        jobs:         Raw list of job dicts from fetch modules.
-        config:       Full parsed config.yaml dict.
-        seen_hashes:  Set of URL hashes already stored in the DB (for dedup).
+        jobs:            Raw list of job dicts from fetch modules.
+        config:          Full parsed config.yaml dict.
+        seen_hashes:     Set of URL hashes already stored in the DB (for dedup).
+        check_live_urls: Whether to verify live URL availability right before return.
 
     Returns:
-        Filtered list of job dicts, each potentially annotated with
-        `comp_flagged: True` if comp >= floor.
+        Filtered list of job dicts, annotated with:
+        - `comp_flagged: True` if comp >= floor.
+        - `visa_flagged: True` if visa/relocation keywords matched.
     """
     filters = config.get("filters", {})
     title_keywords = filters.get("title_keywords", [])
     exclude_keywords = filters.get("exclude_title_keywords", [])
     target_locations = filters.get("locations", [])
+    visa_keywords = filters.get("visa_keywords", [])
     max_age_days = filters.get("max_age_days", 7)
     comp_floor_lpa = filters.get("comp_floor_lpa")
 
@@ -136,6 +197,7 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str]) -> list
         "location_miss": 0,
         "too_old": 0,
         "duplicate": 0,
+        "expired_url": 0,
         "passed": 0,
     }
 
@@ -180,7 +242,12 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str]) -> list
             stats["duplicate"] += 1
             continue
 
-        # 6. Comp flag (annotation, not exclusion)
+        # 6. Freshness / Live URL Availability Check (Optional / Final step)
+        if check_live_urls and not is_url_live(url):
+            stats["expired_url"] += 1
+            continue
+
+        # 7. Annotations (comp flagging & visa sponsorship tagging)
         comp_str = job.get("comp_if_available")
         comp_lpa = _parse_comp_inr_lpa(comp_str)
         job = dict(job)  # shallow copy to avoid mutating original
@@ -188,15 +255,20 @@ def apply_filters(jobs: list[dict], config: dict, seen_hashes: set[str]) -> list
         job["comp_flagged"] = bool(
             comp_floor_lpa and comp_lpa is not None and comp_lpa >= comp_floor_lpa
         )
+        
+        is_visa, visa_term = tag_visa_sponsorship(job, visa_keywords)
+        job["visa_flagged"] = is_visa
+        if is_visa:
+            job["visa_matched_term"] = visa_term
 
         stats["passed"] += 1
         passed.append(job)
 
     logger.info(
         "Filter results: %d total → %d passed | "
-        "keyword_miss=%d, excluded=%d, location_miss=%d, too_old=%d, duplicate=%d, no_title=%d, no_url=%d",
+        "keyword_miss=%d, excluded=%d, location_miss=%d, too_old=%d, duplicate=%d, expired_url=%d, no_title=%d, no_url=%d",
         stats["total"], stats["passed"],
         stats["keyword_miss"], stats["excluded_title"], stats["location_miss"],
-        stats["too_old"], stats["duplicate"], stats["no_title"], stats["no_url"],
+        stats["too_old"], stats["duplicate"], stats["expired_url"], stats["no_title"], stats["no_url"],
     )
     return passed

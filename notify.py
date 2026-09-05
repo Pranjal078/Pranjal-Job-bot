@@ -53,6 +53,7 @@ def _format_job_html(job: dict) -> str:
     comp = job.get("comp_if_available")
     comp_str = _escape_html(comp) if comp else "—"
     flagged = "💰✅ " if job.get("comp_flagged") else ""
+    visa_badge = "✈️ <b>[Visa/Relocation]</b> " if job.get("visa_flagged") else ""
     posted = job.get("posted_date", "")
     if posted:
         try:
@@ -61,7 +62,7 @@ def _format_job_html(job: dict) -> str:
             posted = posted[:10]
 
     return (
-        f'• <b><a href="{url}">{title}</a></b> @ {company}\n'
+        f'• {visa_badge}<b><a href="{url}">{title}</a></b> @ {company}\n'
         f'  📍 {location}  {flagged}💰 {comp_str}  📅 {posted}\n'
     )
 
@@ -74,9 +75,10 @@ def _format_job_plain(job: dict) -> str:
     url = job.get("url", "#")
     comp = job.get("comp_if_available") or "—"
     flagged = " ✅ COMP≥FLOOR" if job.get("comp_flagged") else ""
+    visa_badge = " ✈️ [VISA/RELOCATION]" if job.get("visa_flagged") else ""
     posted = job.get("posted_date", "")[:10]
     return (
-        f"• {title} @ {company}\n"
+        f"• {title} @ {company}{visa_badge}\n"
         f"  📍 {location}  💰 {comp}{flagged}  📅 {posted}\n"
         f"  {url}\n"
     )

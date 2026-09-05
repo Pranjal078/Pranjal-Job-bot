@@ -63,6 +63,7 @@ def run_fetchers(config: dict, only_source: str | None = None) -> list[dict]:
         fetch_naukri,
         fetch_company_careers,
         fetch_linkedin_email,
+        fetch_gulf,
     )
 
     sources_config = config.get("sources", {})
@@ -71,6 +72,7 @@ def run_fetchers(config: dict, only_source: str | None = None) -> list[dict]:
     source_map = {
         "remoteok":       (fetch_remoteok,        sources_config.get("remoteok", True)),
         "weworkremotely": (fetch_weworkremotely,   sources_config.get("weworkremotely", True)),
+        "gulf":           (fetch_gulf,             sources_config.get("gulf", True)),
         "wellfound":      (fetch_wellfound,        sources_config.get("wellfound", False)),
         "naukri":         (fetch_naukri,           sources_config.get("naukri", False)),
         "company_careers":(fetch_company_careers,  sources_config.get("company_careers", True)),
